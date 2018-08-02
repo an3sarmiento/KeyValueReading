@@ -10,7 +10,13 @@ namespace XMLReader
     {
         private string url;
         private string parameters;
+        private string ResponseString;
         private List<Client> clients;
+
+        public String GetResponse()
+        {
+            return ResponseString;
+        }
 
         public XMLReader(string url, string parameters)
         {
@@ -19,7 +25,23 @@ namespace XMLReader
             this.clients = new List<Client>();
         }
 
-        public int GetClients()
+        public int SOAPCall(string body)
+        { 
+            try
+            {
+                this.ResponseString = SOAPUtil.Call(url, parameters, body) ;
+                return 0;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                Console.WriteLine(e.StackTrace);
+                this.ResponseString = e.Message;
+                return -1;
+            }
+        }
+
+        public int GetRestCall()
         {
             using (var client = new HttpClient())
             {
@@ -36,23 +58,33 @@ namespace XMLReader
 
                         // by calling .Result you are synchronously reading the result
                         string responseString = responseContent.ReadAsStringAsync().Result;
-                        
-                        List<string> findings = BetweenBrackets(responseString, "row");
 
-                        foreach(string find in findings)
-                            clients.Add(new Client(find));
-
-                        return findings.Count;
+                        this.ResponseString = responseString;
+                        return 0;
                     }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message);
                     Console.WriteLine(e.StackTrace);
+                    this.ResponseString = e.Message;
                     return -1;
                 }
             }
-            return 0;
+            this.ResponseString = "Unable to Connect With the service";
+            return -1;
+        }
+
+        public int GetRowInformation()
+        {
+            var Rows = 0;
+            List<string> findings = BetweenBrackets(ResponseString, "row");
+
+            foreach (string find in findings)
+                clients.Add(new Client(find));
+
+            Rows = findings.Count;
+            return Rows;
         }
 
         public static List<string> BetweenBrackets(string text, string attrib)
@@ -80,7 +112,9 @@ namespace XMLReader
         {
             // Display the number of command line arguments:
             string url = "http://localhost:8081";
-            string path ="/listUsers";
+            //string url = "http://www.dneonline.com/calculator.asmx";
+            string path ="/get";
+            //string path = "http://tempuri.org/Add";
             int clientToPrint = 0;
             string attribute = "attribute_1";
             if(args.Length >= 4)
@@ -92,20 +126,32 @@ namespace XMLReader
             }
 
             XMLReader Reader = new XMLReader(url, path);
-            int XMLSize = Reader.GetClients();
-            Console.WriteLine("Number of clients: " + XMLSize);
-            if (XMLSize >= 0)
+            int ResponseCode = Reader.GetRestCall();
+            //string SOAPBody = "<Add xmlns=\"http://tempuri.org/\"><intA>1</intA><intB>5</intB></Add>";
+            //int ResponseCode = Reader.SOAPCall(SOAPBody);
+            Console.WriteLine("Response Code: " + ResponseCode);
+            Console.WriteLine("Response Message: " + Reader.GetResponse());
+            if (ResponseCode == 0)
             {
-                for (int i = 0; i != XMLSize; i++)
+                var XMLSize = Reader.GetRowInformation();
+                if (XMLSize >= 0)
                 {
-                    Console.WriteLine("Result Client (" + i + "): " + Reader.getAttribute(i, attribute));
+                    for (int i = 0; i != XMLSize; i++)
+                    {
+                        Console.WriteLine("Result Client (" + i + "): " + Reader.getAttribute(i, attribute));
+                    }
                 }
+                else
+                {
+                    Console.WriteLine("NO ROWS FOUND!");
+                }
+
             }
             else
             {
                 Console.WriteLine("TIME OUT!");
-                Console.WriteLine("TIME OUT!");
             }
+            Console.WriteLine("END");
         }
     }
 
@@ -128,7 +174,12 @@ namespace XMLReader
             foreach(string find in findings)
             {
                 string _nm = XMLReader.BetweenBrackets(find, "nm")[0];
-                string _val = XMLReader.BetweenBrackets(find, "vl")[0].Trim();
+                string _val = "";
+                try
+                {
+                    _val = XMLReader.BetweenBrackets(find, "vl")[0].Trim();
+                }
+                catch (Exception e) { }
 
                 string response = "nm: " + _nm + ", vl: " + _val;
                 Console.WriteLine(response);
